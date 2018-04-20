@@ -1,0 +1,223 @@
+#! /bin/sh
+
+# =========================
+# =                       =
+# =   Autor: xpeska05     =
+# =   Jmeno: Jiri Peska   =
+# =   Datum: 27.03.2017   =
+# =                       =
+# =========================
+
+export LC_ALL=POSIX
+
+#funkce vypise podle zadanych parametru nejaky pocet mrizek podle pomeru
+drawOneSizeHistogram()
+{
+	printf "$2"
+	m=`expr $1 / $4`
+	for i in `seq 1 $m` ;do
+	#for i in `seq 1 $1` ;do
+		printf '#'
+	done
+	printf "$3"
+}
+
+#funkce zjisti nejvetsi promennou podle jejiho obsahu
+maximum()
+{
+	for i in "$@"
+	do
+		if [ "$i" -gt "$max" ]; then
+			max="$i"
+		fi
+	done
+}
+
+#funkce slouzi pro vypis hlavicky vypisu
+drawAll()
+{
+	echo "Root directory: $1"
+	echo "Directories: $2"
+	echo "All files: $3"
+}
+
+#definice a inicializace promennych pro parametry scriptu
+tmpdir=""
+regex="*"
+wdir="."
+normalize="FALSE"
+
+#zjisteni pritomnosti a spravnosti zadanych parametru
+if [ $# -gt 0 ]; then
+	while getopts "ni:" opt
+	do
+		case $opt in
+		n)
+			normalize="TRUE"
+			;;
+		i)
+			regex=$OPTARG
+			;;
+		\?)
+			echo "Chyba: Neocekavany prepinac -$OPTARG"
+			exit 1
+			;;
+		:)
+			echo "Chyba: Prepinac -$OPTARG chce argument"
+			exit 1
+			;;
+		esac
+	done
+
+	shift $(($OPTIND - 1))
+
+	#test, zda-li zadany korenovy adresar existuje
+	if [ $# -eq 1 ]; then
+		wdir="$*"
+		#existuje novy zdrojovy adresar?
+		if [ ! -d "$wdir" ]; then
+			echo "Chyba: Adresar neexistuje!" 2>&1
+			exit 1
+		fi
+	fi
+
+	#test na pokryti korenoveho adresare
+	#if ! echo "$wdir" | sed 's/.*\///' | egrep -E "$regex" >/dev/null; then
+	#	echo "Chyba: Regularni vyraz pokryva nazev korenoveho adresare";
+	#	exit 1
+	#fi
+
+fi
+
+#pokud byla zadana jina cesta nez je aktualni adresar, tak se do ni presuneme
+if [ "$wdir" != "$PWD" ]; then
+	cd "$wdir"
+fi
+
+#definice a inicializace promennych pro velikosti souboru
+filesLT100B=0
+filesLT1KiB=0
+filesLT10KiB=0
+filesLT100KiB=0
+filesLT1MiB=0
+filesLT10MiB=0
+filesLT100MiB=0
+filesLT1GiB=0
+filesGEQ1GiB=0
+
+#sirka terminalu
+sirka=`tput cols`
+
+#spocita adresare odpovidajici RV
+alldircount=$(find . -type d \( -path '*/.*' -prune -o ! -name '.*' \) -a -name "$regex" | wc -l) 2>/dev/null
+
+#spocita soubory odpovidajici RV
+allfilecount=$(find "." \( -path '*/.*' -prune -o ! -name '.*' \) -type f -a -name "$regex" | wc -l) 2>/dev/null
+
+#vypise vsechny soubory do promenne list
+list=$(find "." -type f \( -path '*/.*' -prune -o ! -name '.*' \) -a -name "$regex" | while read line; do cat "$line" | wc -c; done | sort -nr) 2>/dev/null
+
+#projdeme adresare a podle velikosti souboru inkrementujeme prislusne promenne
+for i in `seq 1 $allfilecount`
+do
+	#krajime promennou list podle poctu souboru v ni ulozenych
+	elem=$(echo $list | cut -f"$i" -d' ')
+
+	if [ "$elem" -lt 100 ]; then
+		filesLT100B=`expr $filesLT100B + 1`
+	elif [ "$elem" -lt 1024 ]; then
+		filesLT1KiB=`expr $filesLT1KiB + 1`
+	elif [ "$elem" -lt 10240 ]; then
+		filesLT10KiB=`expr $filesLT10KiB + 1`
+	elif [ "$elem" -lt 102400 ]; then
+		filesLT100KiB=`expr $filesLT100KiB + 1`
+	elif [ "$elem" -lt 1048576 ]; then
+		filesLT1MiB=`expr $filesLT1MiB + 1`
+	elif [ "$elem" -lt 10485760 ]; then
+		filesLT10MiB=`expr $filesLT10MiB + 1`
+	elif [ "$elem" -lt 104857600 ]; then
+		filesLT100MiB=`expr $filesLT100MiB + 1`
+	elif [ "$elem" -lt 1073741824 ]; then
+		filesLT1GiB=`expr $filesLT1GiB + 1`
+	else
+		filesGEQ1GiB=`expr $filesGEQ1GiB + 1`
+	fi
+done
+
+# ==== normalizace histogramu pro velikosti souboru ==============================
+pomer_size=1
+volnych_mezer=0
+max=0
+
+maximum "$filesLT100B" "$filesLT1KiB" "$filesLT10KiB" "$filesLT100KiB" "$filesLT1MiB" "$filesLT10MiB" "$filesLT100MiB" "$filesLT1GiB" "$filesGEQ1GiB"
+
+if [ -t 1 ]; then
+	volnych_mezer=`expr $sirka - 12 - 1` # -1
+else
+	volnych_mezer=`expr 79 - 12`
+fi
+#echo; echo "mezer: $volnych_mezer"; echo
+if [ "$normalize" = "TRUE" ]; then
+	#echo ">>Nejpocetnejsi: $nejpocetnejsi"
+
+	#samotny vypocet
+	pomer_size=`expr $max / $volnych_mezer + 1`
+	#pomer_size=`expr $allfilecount / $volnych_mezer`
+	#echo ">>pomer: $pomer"
+fi
+
+
+# =============================================================================
+# ============================== MAIN =========================================
+drawAll "$wdir" "$alldircount" "$allfilecount"
+echo "File size histogram:"
+
+drawOneSizeHistogram "$filesLT100B" 	"  <100 B  : " "\n" "$pomer_size";
+drawOneSizeHistogram "$filesLT1KiB" 	"  <1 KiB  : " "\n" "$pomer_size";
+drawOneSizeHistogram "$filesLT10KiB" 	"  <10 KiB : " "\n" "$pomer_size";
+drawOneSizeHistogram "$filesLT100KiB" 	"  <100 KiB: " "\n" "$pomer_size";
+drawOneSizeHistogram "$filesLT1MiB" 	"  <1 MiB  : " "\n" "$pomer_size";
+drawOneSizeHistogram "$filesLT10MiB" 	"  <10 MiB : " "\n" "$pomer_size";
+drawOneSizeHistogram "$filesLT100MiB" 	"  <100 MiB: " "\n" "$pomer_size";
+drawOneSizeHistogram "$filesLT1GiB" 	"  <1 GiB  : " "\n" "$pomer_size";
+drawOneSizeHistogram "$filesGEQ1GiB" 	"  >=1 GiB : " "\n" "$pomer_size";
+
+# =============================================================================
+echo "File type histogram:"
+
+#pokud je pocet souboru 0, ukoncime program
+if [ "$allfilecount" -eq 0 ]; then
+	exit 0
+fi
+
+#ulozime si oddelovac IFS
+tmpifs="$IFS"
+IFS="$(printf "\n>>>")"
+
+#============== normalizace histogramu typu souboru ==================
+if [ -t 1 ]; then
+	volnych_mezer=`expr $sirka - 47 - 1` # -1
+else
+	volnych_mezer=`expr 79 - 47`
+fi
+nejpocetnejsi=0
+pomer=1
+if [ "$normalize" = "TRUE" ]; then
+	nejpocetnejsi=$(file --separator "///" $(find "$wdir" -type f -a -name "$regex" 2>/dev/null) | sed -e "s'.*///\\s*''" | sort | uniq -c | sort --numeric --reverse | head -n 1 | awk '{print $1}') 2>/dev/null
+	#echo ">>Nejpocetnejsi: $nejpocetnejsi"
+
+	#samotny vypocet
+	#pomer=`expr $nejpocetnejsi / $volnych_mezer`
+	pomer=`expr $allfilecount / $volnych_mezer`
+
+	if [ "$pomer" -le 1 ]; then
+		pomer=`expr $pomer + 1`
+	fi
+	#echo ">>pomer: $pomer"
+fi
+
+file --separator "///" $(find "$wdir" -type f -a -name "$regex" 2>/dev/null) | sed -e "s'.*///\\s*''" | sort | uniq -c | sort --numeric --reverse | head -n 10 | awk '{num=$1; $1=""; if (length($0) > 40) {{printf " %s", substr ($0, 0, 41)}; printf "...: "} else { printf " %-44s: ", $0 }; for(i=1; i <= num/'"$pomer"'; i++) {printf "#"} {printf "\n"} }' 2>/dev/null
+
+IFS="$tmpifs"
+
+exit 0;
